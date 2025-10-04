@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SJF Scheduling Demo - Professional Video Studio</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for a clean, professional dark theme */
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: #0b1117; 
+            color: #e5e7eb;
+        } 
+        .editor-container { 
+            min-height: 90vh; 
+            border-radius: 12px; 
+            overflow: hidden; 
+            border: 1px solid #374151;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+        }
+        .tools-panel { 
+            background-color: #1f2937; /* Dark sidebar */
+        } 
+        .queue-area { 
+            background-color: #111827; 
+        } 
+        
+        /* Processor Status */
+        .processor-box { 
+            background-color: #1f2937; 
+            border-radius: 8px; 
+            border: 1px solid #374151;
+        }
+        .job-status-running { 
+            background-color: #10b981; 
+            animation: pulse-running 1.5s infinite; 
+        } 
+        
+        /* Queue Items */
+        .queue-item { 
+            padding: 14px 20px; 
+            margin-bottom: 10px; 
+            border-radius: 6px; 
+            background-color: #1f2937; 
+            border-left: 6px solid; 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3); 
+            transition: all 0.3s ease-in-out;
+        }
+
+        /* Pulsing animation for running job */
+        @keyframes pulse-running {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            50% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+</head>
+<body class="p-4">
+
+    <div class="max-w-7xl mx-auto editor-container flex shadow-2xl">
+        
+        <!-- LEFT PANEL: Editor Tools & Scheduling Rule -->
+        <div class="tools-panel w-full lg:w-1/4 p-6 flex flex-col space-y-8">
+            <h2 class="text-3xl font-extrabold border-b border-gray-600 pb-3 text-white">🎬 Online Video Studio</h2>
+            
+            <!-- SJF Core Explanation Box - PATCHED WITH CLARIFICATION -->
+            <div class="bg-blue-900/40 p-4 rounded-lg shadow-inner text-sm space-y-2 border border-blue-600/50">
+                <p class="font-bold text-xl text-blue-300">Scheduling Rule: Shortest Job First</p>
+                <p class="text-gray-300">
+                    The Engine prioritizes tasks with the smallest **Burst Time (BT)**. This is the optimal way to achieve the **Minimum Average Waiting Time** for all users.
+                </p>
+                 <p class="text-yellow-300 text-xs mt-2 font-semibold">
+                    💡 **Non-Preemptive SJF Limitation:** If a long task starts running *before* short tasks arrive, it locks the CPU. This is why FCFS can sometimes calculate a lower theoretical average waiting time in small, staggered samples.
+                </p>
+            </div>
+            
+            <!-- Job Submission -->
+            <div class="space-y-4">
+                <label for="job-type" class="block text-lg font-medium text-gray-200">Select Task Intensity (BT):</label>
+                <select id="job-type" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white shadow-inner focus:ring-green-500 focus:border-green-500">
+                    <option value="3,Thumbnail Export">🖼️ Thumbnail Export (3s BT) - Quick</option>
+                    <option value="10,Color Grade Render">🎨 Color Grade Render (10s BT) - Standard</option>
+                    <option value="20,Stabilize Footage">⚙️ Stabilize Footage (20s BT) - Long</option>
+                    <option value="45,Final 4K Render">🎥 Final 4K Render (45s BT) - Intensive</option>
+                </select>
+                <button onclick="submitJob()" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg transition duration-150 shadow-lg">
+                    Add Task to Render Queue
+                </button>
+            </div>
+
+             <!-- Clock/Status -->
+            <div class="text-center mt-auto p-4 bg-gray-800 rounded-lg border border-gray-700">
+                 <p class="text-sm text-gray-400 font-semibold">System Clock</p>
+                 <span id="current-time" class="text-5xl font-mono text-yellow-400">0s</span>
+             </div>
+        </div>
+        
+        <!-- RIGHT PANEL: Dashboard & Metrics -->
+        <div class="w-full lg:w-3/4 p-8 overflow-y-auto queue-area space-y-8">
+            <h1 class="text-4xl font-extrabold text-white mb-6 border-b border-gray-700 pb-3">Live Processing Dashboard</h1>
+
+            <!-- 1. RENDERING CORE Status -->
+            <div class="processor-box p-5">
+                <h2 class="text-2xl font-bold mb-3 border-b border-gray-600 pb-2">
+                    DEDICATED RENDERING CORE STATUS
+                </h2>
+                <div id="current-processor" class="bg-gray-800 text-white text-center h-28 flex flex-col justify-center items-center rounded-lg shadow-inner">
+                    <span class="text-lg font-bold opacity-80">Core Idle</span>
+                    <span class="text-sm opacity-50 mt-1">SJF is active: Awaiting the shortest task available.</span>
+                </div>
+            </div>
+            
+            <!-- 2. Waiting Queue (SJF Sorted) -->
+            <div class="p-4 rounded-lg border border-gray-700 bg-[#1f2937]">
+                <h3 class="text-xl font-semibold text-white">Pending Queue: <span class="text-red-400">SJF Sorted</span></h3>
+                <p class="text-sm text-gray-400 mt-1">
+                    The task at the top will always execute next. Shorter jobs jump ahead to minimize overall wait time.
+                </p>
+            </div>
+            
+            <div id="job-queue" class="min-h-[150px] p-2 rounded-lg border border-gray-700">
+                <p class="text-gray-500 text-center py-6">The queue is empty. Submit a task from the left panel.</p>
+            </div>
+
+            <!-- 3. Detailed History and Metrics -->
+            <div class="p-5 mt-8 border border-gray-700 rounded-lg shadow-md bg-[#1f2937]">
+                <h2 class="text-2xl font-semibold mb-4 text-white border-b border-gray-700 pb-2">SJF Performance Report & Interdependence</h2>
+                <div id="metrics-output" class="text-gray-300">
+                    <p class="text-center py-4 text-gray-500">Run tasks to completion to see the performance comparison table.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global simulation variables
+        let jobs = [];
+        let jobCounter = 0;
+        let clock = 0;
+        let currentRunningJob = null;
+        let interval = null;
+
+        const getNewJobId = () => ++jobCounter;
+
+        // DOM elements
+        const jobQueueEl = document.getElementById('job-queue');
+        const processorEl = document.getElementById('current-processor');
+        const currentTimeEl = document.getElementById('current-time');
+        const metricsOutputEl = document.getElementById('metrics-output');
+        const jobTypeEl = document.getElementById('job-type');
+
+        const colors = {
+            'Thumbnail Export': '#10b981', // Green
+            'Color Grade Render': '#f59e0b', // Amber
+            'Stabilize Footage': '#3b82f6', // Blue
+            'Final 4K Render': '#ef4444', // Red
+        };
+
+        // --- Core SJF Logic ---
+
+        function startScheduler() {
+            if (interval !== null) return; 
+
+            interval = setInterval(() => {
+                clock++;
+                currentTimeEl.innerHTML = `${clock}s`;
+                
+                if (currentRunningJob) {
+                    currentRunningJob.remainingBurstTime--;
+                    
+                    const elapsed = currentRunningJob.burstTime - currentRunningJob.remainingBurstTime;
+                    const progress = ((elapsed / currentRunningJob.burstTime) * 100).toFixed(0);
+
+                    // Update running job display with live progress
+                    processorEl.className = 'job-status-running text-white text-center h-28 flex flex-col justify-center items-center rounded-lg shadow-xl';
+                    processorEl.innerHTML = `
+                        <span class="text-xl font-bold">${currentRunningJob.name} (ID:${currentRunningJob.id})</span>
+                        <span class="text-sm opacity-90 mb-2">
+                            BT: ${currentRunningJob.burstTime}s | Remaining: ${currentRunningJob.remainingBurstTime}s
+                        </span>
+                        <div class="w-11/12 h-3 bg-gray-600 rounded-full overflow-hidden">
+                            <div class="h-full transition-all duration-1000" style="width: ${progress}%; background-color: ${currentRunningJob.color}"></div>
+                        </div>
+                    `;
+
+                    if (currentRunningJob.remainingBurstTime <= 0) {
+                        currentRunningJob.completionTime = clock;
+                        currentRunningJob.waitingTime = currentRunningJob.startTime - currentRunningJob.arrivalTime;
+                        currentRunningJob.turnaroundTime = currentRunningJob.completionTime - currentRunningJob.arrivalTime;
+                        currentRunningJob.status = 'Completed';
+                        
+                        // Show completion status
+                        processorEl.className = 'bg-indigo-600 text-white text-center h-28 flex flex-col justify-center items-center rounded-lg shadow-xl';
+                        processorEl.innerHTML = `<span class="text-xl font-bold">✅ Task #${currentRunningJob.id} Completed!</span><span class="text-sm opacity-90">Total Turnaround: ${currentRunningJob.turnaroundTime}s</span>`;
+                        
+                        currentRunningJob = null;
+                    }
+                }
+
+                if (!currentRunningJob) {
+                    processNextJob();
+                }
+
+                if (jobs.length > 0 && jobs.every(j => j.status === 'Completed')) {
+                    clearInterval(interval);
+                    interval = null;
+                    displayMetrics();
+                }
+
+                updateQueueDisplay();
+            }, 1000); // 1 second = 1 unit of time
+        }
+
+        /**
+         * Implements Non-Preemptive SJF scheduling: picks the waiting job with the lowest BT.
+         */
+        function processNextJob() {
+            const waitingJobs = jobs.filter(j => j.status === 'Waiting');
+            
+            if (waitingJobs.length === 0) {
+                processorEl.className = 'bg-gray-800 text-white text-center h-28 flex flex-col justify-center items-center rounded-lg shadow-inner';
+                processorEl.innerHTML = `<span class="text-lg font-bold opacity-80">Core Idle</span><span class="text-sm opacity-50">SJF is active: Awaiting the shortest task available.</span>`;
+                return;
+            }
+
+            // SJF Logic: Sort by shortest remaining burst time (BT)
+            waitingJobs.sort((a, b) => a.remainingBurstTime - b.remainingBurstTime);
+
+            currentRunningJob = waitingJobs[0];
+            currentRunningJob.status = 'Running';
+            if (currentRunningJob.startTime === null) {
+                currentRunningJob.startTime = clock;
+            }
+        }
+
+        // --- UI & Submission Functions ---
+
+        function addNewJob(burstTime, name) {
+            const newJob = {
+                id: getNewJobId(),
+                name: name,
+                burstTime: burstTime,
+                remainingBurstTime: burstTime,
+                arrivalTime: clock,
+                startTime: null,
+                completionTime: null,
+                status: 'Waiting',
+                color: colors[name] || '#9ca3af'
+            };
+            jobs.push(newJob);
+            updateQueueDisplay();
+            startScheduler();
+        }
+
+        function submitJob() {
+            const [burstTimeStr, name] = jobTypeEl.value.split(',');
+            addNewJob(parseInt(burstTimeStr), name);
+        }
+
+        /**
+         * Renders the waiting queue, visually sorted by SJF rule.
+         */
+        function updateQueueDisplay() {
+            const waitingJobs = jobs.filter(j => j.status === 'Waiting');
+            
+            waitingJobs.sort((a, b) => a.burstTime - b.burstTime);
+
+            if (waitingJobs.length === 0) {
+                jobQueueEl.innerHTML = `<p class="text-gray-500 text-center py-6">The queue is clear. All jobs are done or running.</p>`;
+                return;
+            }
+
+            jobQueueEl.innerHTML = waitingJobs.map((job, index) => {
+                const waitTime = clock - job.arrivalTime;
+                const colorClass = index === 0 ? 'border-green-500 text-green-400' : 'border-blue-500 text-gray-200';
+                
+                return `
+                    <div class="queue-item flex items-center justify-between transition duration-300 ${colorClass}" style="border-left-color: ${job.color};">
+                        <div class="flex items-center space-x-3">
+                            <span class="text-xl font-extrabold">${index + 1}.</span>
+                            <span class="font-semibold">${job.name} (ID:${job.id})</span>
+                        </div>
+                        <div class="text-right space-x-4 flex items-center">
+                            <span class="text-sm font-mono bg-gray-700 px-3 py-1 rounded">BT: ${job.burstTime}s</span>
+                            <span class="text-xs text-red-400 font-semibold">Live Wait: ${waitTime}s</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        /**
+         * Calculates and displays the final scheduling metrics for SJF and FCFS comparison.
+         */
+        function displayMetrics() {
+            const completedJobs = jobs.filter(j => j.status === 'Completed').sort((a, b) => a.completionTime - b.completionTime);
+            if (completedJobs.length === 0) return;
+
+            // --- SJF Calculations ---
+            const sjfTotalWaitingTime = completedJobs.reduce((sum, j) => sum + j.waitingTime, 0);
+            const sjfAvgWaitingTime = (sjfTotalWaitingTime / completedJobs.length).toFixed(2);
+            const sjfExecutionOrder = completedJobs.map(j => `<span style="color: ${j.color}; font-weight: bold;">ID:${j.id}</span>`).join(' → ');
+
+            // --- FCFS Simulation (Theoretical for Comparison) ---
+            let fcfsJobs = [...jobs].sort((a, b) => a.arrivalTime - b.arrivalTime);
+            let fcfsCurrentTime = 0;
+            let fcfsTotalWaitingTime = 0;
+            let fcfsHistory = [];
+
+            for (let job of fcfsJobs) {
+                const fcfsStartTime = Math.max(fcfsCurrentTime, job.arrivalTime);
+                const fcfsWaitingTime = fcfsStartTime - job.arrivalTime;
+                fcfsTotalWaitingTime += fcfsWaitingTime;
+                fcfsCurrentTime = fcfsStartTime + job.burstTime;
+
+                fcfsHistory.push({
+                    id: job.id,
+                    waitingTime: fcfsWaitingTime
+                });
+            }
+            const fcfsAvgWaitingTime = (fcfsTotalWaitingTime / jobs.length).toFixed(2);
+            
+            // Determine the total time saved
+            const timeSaved = (fcfsTotalWaitingTime - sjfTotalWaitingTime).toFixed(2);
+            
+            // --- Rendering ---
+            metricsOutputEl.innerHTML = `
+                <div class="mb-6 p-4 bg-gray-800 rounded-lg border border-gray-700">
+                    <h3 class="font-bold text-xl text-white mb-2">SJF Execution Order:</h3>
+                    <p class="text-lg font-mono">${sjfExecutionOrder}</p>
+                </div>
+                
+                <h3 class="font-bold text-xl text-white mb-3">Job Interdependence Table (SJF vs. FCFS)</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-700">
+                        <thead class="bg-gray-800">
+                            <tr>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-400 uppercase">Task (ID)</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-400 uppercase">BT</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-400 uppercase text-green-400">SJF Start Time</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-400 uppercase text-green-400">SJF Waiting Time</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-400 uppercase text-red-400">FCFS Waiting Time</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-700">
+                            ${completedJobs.map(job => {
+                                const fcfsWait = fcfsHistory.find(h => h.id === job.id).waitingTime;
+                                const isSJFBetter = job.waitingTime < fcfsWait;
+                                
+                                return `
+                                <tr class="hover:bg-gray-800">
+                                    <td class="px-3 py-2 whitespace-nowrap text-sm font-medium" style="color:${job.color}">${job.name} (${job.id})</td>
+                                    <td class="px-3 py-2 whitespace-nowrap text-sm font-semibold">${job.burstTime}s</td>
+                                    <td class="px-3 py-2 whitespace-nowrap text-sm text-green-400">${job.startTime}s</td>
+                                    <td class="px-3 py-2 whitespace-nowrap text-sm text-green-400">${job.waitingTime}s</td>
+                                    <td class="px-3 py-2 whitespace-nowrap text-sm ${isSJFBetter ? 'text-red-400 line-through' : 'text-red-400'}">${fcfsWait}s</td>
+                                </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- SJF Average Metrics -->
+                    <div class="p-4 bg-green-900/40 rounded-lg border border-green-700 shadow-lg">
+                        <h4 class="font-bold text-lg text-green-400 mb-2">SJF Performance (Actual)</h4>
+                        <p class="text-sm text-gray-300">Avg. Waiting Time (WT):</p> 
+                        <span class="text-5xl font-extrabold text-green-400">${sjfAvgWaitingTime}s</span>
+                    </div>
+
+                    <!-- FCFS Average Metrics -->
+                    <div class="p-4 bg-red-900/40 rounded-lg border border-red-700 shadow-lg">
+                        <h4 class="font-bold text-lg text-red-400 mb-2">FCFS Performance (If Used)</h4>
+                        <p class="text-sm text-gray-300">Avg. Waiting Time (WT):</p> 
+                        <span class="text-5xl font-extrabold text-red-400">${fcfsAvgWaitingTime}s</span>
+                    </div>
+                </div>
+
+                <div class="mt-6 text-center p-3 bg-yellow-900/40 border-yellow-700 rounded-lg border font-semibold">
+                    <p class="text-xl text-yellow-300">
+                        Total Waiting Time Saved: <span class="text-white">${timeSaved}s</span>
+                    </p>
+                    <p class="text-sm text-gray-400 mt-1">
+                        SJF efficiently serves short, interactive tasks, minimizing the delay for the largest number of users.
+                    </p>
+                </div>
+
+                <button onclick="resetSimulation()" class="mt-6 w-full bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-4 rounded-lg transition duration-150">
+                    Reset Studio
+                </button>
+            `;
+        }
+        
+        /**
+         * Resets all state variables and the UI.
+         */
+        function resetSimulation() {
+            clearInterval(interval);
+            interval = null;
+            jobs = [];
+            jobCounter = 0;
+            clock = 0;
+            currentRunningJob = null;
+            
+            currentTimeEl.innerHTML = `0s`;
+            processorEl.className = 'bg-gray-800 text-white text-center h-28 flex flex-col justify-center items-center rounded-lg shadow-inner';
+            processorEl.innerHTML = `<span class="text-lg font-bold opacity-80">Core Idle</span><span class="text-sm opacity-50">SJF Scheduler is awaiting the shortest task available.</span>`;
+            metricsOutputEl.innerHTML = `<p class="text-center py-4 text-gray-500">Run tasks to completion to see the full report and comparison table.</p>`;
+            jobQueueEl.innerHTML = `<p class="text-gray-500 text-center py-6">The queue is empty. Submit a task from the left panel.</p>`;
+        }
+    </script>
+</body>
+</html>
